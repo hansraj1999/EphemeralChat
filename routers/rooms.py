@@ -73,7 +73,9 @@ async def join_room(room_id: str, join_room_request: JoinRoomRequest, request: R
         logger.warning(f"Join room failed: Room {room_id} not found")
         raise HTTPException(status_code=400, detail="Room not found")
     
-    if room.get("password") and room.get("password") != join_room_request.password:
+    room_password = room.get("password")
+    # Check if password exists and is not None/empty/"None"
+    if room_password and room_password != "None" and room_password != "" and room_password != join_room_request.password:
         logger.warning(f"Join room failed: Invalid password for room {room_id} from {request.client.host}")
         raise HTTPException(status_code=401, detail="Invalid password")
     
@@ -150,7 +152,8 @@ async def get_room_details(
     
     # Check if room has password and validate it
     room_password = room.get("password")
-    has_password = room_password is not None and room_password != ""
+    # Handle both None and string "None" cases
+    has_password = room_password is not None and room_password != "" and room_password != "None"
     
     if has_password:
         if not password:

@@ -32,8 +32,15 @@ class RedisBackend:
     def create_room(self, room_id: str, room_data: dict, ttl: int = 600):
         logger.info(f"Creating room {room_id} with TTL {ttl} seconds")
         key = REDIS_META_KEY.format(slug=room_id)
-        # Convert dict values to strings for Redis hash
-        room_data_str = {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in room_data.items()}
+        # Convert dict values to strings for Redis hash, skip None values
+        room_data_str = {}
+        for k, v in room_data.items():
+            if v is None:
+                continue  # Skip None values
+            if isinstance(v, (dict, list)):
+                room_data_str[k] = json.dumps(v)
+            else:
+                room_data_str[k] = str(v)
         self.redis_client.hset(key, mapping=room_data_str)
         if ttl:
             self.redis_client.expire(key, ttl)
