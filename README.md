@@ -9,7 +9,8 @@ A distributed, ephemeral chat application built with FastAPI, WebSockets, and Re
 - ⏱️ **Ephemeral Rooms**: Rooms automatically expire after a configurable time period
 - 🔒 **Password Protection**: Optional password protection for rooms
 - 👥 **User Limits**: Configurable maximum users per room
-- 📊 **Room Details API**: Get room information including online user count
+- 📊 **Room Details API**: Get room information including online user count and list
+- 👤 **Real-Time Presence**: Automatic online/offline status updates via WebSocket
 - 🔌 **WebSocket Support**: Real-time bidirectional communication
 - 🧹 **Auto Cleanup**: Automatic cleanup of expired rooms and disconnected users
 
@@ -280,6 +281,18 @@ GET /rooms/{room_id}?password=optional-password
   "expires_at": "2025-01-17T12:10:00.000Z",
   "max_users": 20,
   "online_users_count": 5,
+  "online_users": [
+    {
+      "connection_id": "uuid-1234",
+      "display_name": "John",
+      "connected_at": "2025-01-17T12:05:00.000Z"
+    },
+    {
+      "connection_id": "uuid-5678",
+      "display_name": "Jane",
+      "connected_at": "2025-01-17T12:06:00.000Z"
+    }
+  ],
   "owner_name": "John Doe",
   "has_password": true,
   "is_expired": false,
@@ -362,15 +375,23 @@ ws.send("Hello, world!");
 ```javascript
 ws.onmessage = (event) => {
   const message = JSON.parse(event.data);
-  console.log(message);
-  // {
-  //   "type": "message",
-  //   "text": "Hello, world!",
-  //   "connection_id": "uuid",
-  //   "display_name": "John",
-  //   "room_id": "abc123",
-  //   "timestamp": "2025-01-17T12:34:56.789Z"
-  // }
+  
+  switch(message.type) {
+    case 'message':
+      console.log(`${message.display_name}: ${message.text}`);
+      break;
+    case 'presence':
+      if (message.event === 'user_online') {
+        console.log(`${message.display_name} came online`);
+      } else if (message.event === "user_offline") {
+        console.log(`${message.display_name} went offline`);
+      }
+      console.log(`Online users: ${message.online_count}`);
+      break;
+    case 'system':
+      console.log(`System: ${message.message}`);
+      break;
+  }
 };
 ```
 
@@ -398,6 +419,25 @@ ws.onmessage = (event) => {
   "timestamp": "2025-01-17T12:34:56.789Z"
 }
 ```
+
+#### Presence Messages (Online/Offline Status)
+```json
+{
+  "type": "presence",
+  "event": "user_online",
+  "connection_id": "uuid",
+  "display_name": "John",
+  "room_id": "abc123",
+  "timestamp": "2025-01-17T12:34:56.789Z",
+  "online_count": 5
+}
+```
+
+**Presence Events:**
+- `user_online`: Broadcast when a user connects to the room
+- `user_offline`: Broadcast when a user disconnects from the room
+
+**Note:** Presence messages are automatically sent to all connected clients in real-time. No polling required!
 
 #### Room Closure
 ```json
@@ -453,7 +493,14 @@ async def chat_client():
         # Receive messages
         async for message in websocket:
             data = json.loads(message)
-            print(f"Received: {data}")
+            if data.get('type') == 'presence':
+                if data.get('event') == 'user_online':
+                    print(f"{data['display_name']} came online")
+                elif data.get('event') == 'user_offline':
+                    print(f"{data['display_name']} went offline")
+                print(f"Online users: {data['online_count']}")
+            else:
+                print(f"Received: {data}")
 
 asyncio.run(chat_client())
 ```

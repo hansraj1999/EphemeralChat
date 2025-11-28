@@ -78,7 +78,8 @@ async def listen_to_redis_channel(room_id: str):
                 # Timeout or no message, continue loop
                 continue
                 
-            if message.get('type') == 'message':
+            message_type = message.get('type')
+            if message_type in ['message', 'presence']:
                 try:
                     # Parse the message
                     message_data = json.loads(message['data'])
@@ -193,6 +194,19 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
         redis_backend.add_user_to_room(room_id, connection_id, user_data)
         logger.info(f"User {connection_id} ({user_data['display_name']}) joined room {room_id}")
         
+        # Broadcast user online presence to all instances
+        presence_message = {
+            "type": "presence",
+            "event": "user_online",
+            "connection_id": connection_id,
+            "display_name": user_data["display_name"],
+            "room_id": room_id,
+            "timestamp": datetime.now().isoformat(),
+            "online_count": len(redis_backend.get_users_in_room(room_id))
+        }
+        redis_backend.publish_message(room_id, presence_message)
+        logger.debug(f"Broadcasted user online presence for {connection_id}")
+        
         # Start Redis pub/sub listener for this room if not already running
         if room_id not in room_pubsub_tasks or room_pubsub_tasks[room_id].done():
             room_pubsub_tasks[room_id] = asyncio.create_task(listen_to_redis_channel(room_id))
@@ -270,6 +284,26 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
                 # Remove from Redis
                 redis_backend.remove_user_from_room(room_id, connection_id)
                 logger.info(f"User {connection_id} left room {room_id}")
+                
+                # Broadcast user offline presence to all instances
+                try:
+                    # Get user display_name before removing
+                    conn_data = redis_backend.redis_client.hgetall(f"conn:{connection_id}")
+                    display_name = conn_data.get("display_name", f"User_{connection_id[:8]}") if conn_data else f"User_{connection_id[:8]}"
+                    
+                    presence_message = {
+                        "type": "presence",
+                        "event": "user_offline",
+                        "connection_id": connection_id,
+                        "display_name": display_name,
+                        "room_id": room_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "online_count": len(redis_backend.get_users_in_room(room_id))
+                    }
+                    redis_backend.publish_message(room_id, presence_message)
+                    logger.debug(f"Broadcasted user offline presence for {connection_id}")
+                except Exception as e:
+                    logger.debug(f"Could not broadcast offline presence: {e}")
                 
                 # If no more connections in this room, clean up
                 if room_id in room_connections and len(room_connections[room_id]) == 0:

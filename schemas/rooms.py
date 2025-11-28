@@ -34,6 +34,11 @@ class InviteRequest(BaseModel):
 class InviteResponse(BaseModel):
     invite_url: str
 
+class OnlineUser(BaseModel):
+    connection_id: str
+    display_name: str
+    connected_at: str
+
 class RoomDetailsResponse(BaseModel):
     room_id: str
     name: Optional[str]
@@ -41,6 +46,7 @@ class RoomDetailsResponse(BaseModel):
     expires_at: str
     max_users: int
     online_users_count: int
+    online_users: Optional[list[OnlineUser]] = None
     owner_name: Optional[str]
     has_password: bool
     is_expired: bool

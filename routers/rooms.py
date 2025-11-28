@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Request
-from schemas.rooms import CreateRoomRequest, CreateRoomResponse, JoinRoomRequest, JoinRoomResponse, CloseRoomRequest, RoomDetailsResponse
+from schemas.rooms import CreateRoomRequest, CreateRoomResponse, JoinRoomRequest, JoinRoomResponse, CloseRoomRequest, RoomDetailsResponse, OnlineUser
 import random
 import string
 from backend import redis_backend
@@ -178,9 +178,23 @@ async def get_room_details(
             # If we can't parse the date, assume it's not expired
             pass
     
-    # Get online users count
+    # Get online users count and list
     current_users = redis_backend.get_users_in_room(room_id)
     online_users_count = len(current_users)
+    
+    # Get online users details
+    online_users = []
+    for conn_id in current_users:
+        try:
+            conn_data = redis_backend.redis_client.hgetall(f"conn:{conn_id}")
+            if conn_data:
+                online_users.append({
+                    "connection_id": conn_id,
+                    "display_name": conn_data.get("display_name", f"User_{conn_id[:8]}"),
+                    "connected_at": conn_data.get("connected_at", "")
+                })
+        except Exception:
+            pass
     
     # Check if room is full
     max_users = room.get("max_users", 20)
@@ -195,6 +209,7 @@ async def get_room_details(
         expires_at=room.get("expires_at", ""),
         max_users=max_users,
         online_users_count=online_users_count,
+        online_users=[OnlineUser(**user) for user in online_users],
         owner_name=room.get("owner_name"),
         has_password=has_password,
         is_expired=is_expired,
