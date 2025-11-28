@@ -104,6 +104,15 @@ async def join_room(room_id: str, join_room_request: JoinRoomRequest, request: R
         logger.warning(f"Join room failed: Room {room_id} is full ({current_count}/{max_users})")
         raise HTTPException(status_code=403, detail="Room is full")
     
+    # Check if display_name is provided and validate uniqueness
+    if join_room_request.display_name:
+        display_name = join_room_request.display_name.strip()
+        if display_name:
+            existing_names = redis_backend.get_display_names_in_room(room_id)
+            if display_name.lower() in existing_names:
+                logger.warning(f"Join room failed: Display name '{display_name}' already taken in room {room_id}")
+                raise HTTPException(status_code=409, detail=f"Display name '{display_name}' is already taken in this room. Please choose a different name.")
+    
     logger.info(f"Join room successful for {room_id}: {current_count}/{max_users} users")
     
     # Note: User is actually added to room when WebSocket connection is established

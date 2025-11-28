@@ -172,12 +172,22 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
             await websocket.close(code=1008, reason="Room is full")
             return
         
+        # Generate unique connection ID first (needed for default display name)
+        connection_id = str(uuid.uuid4())
+        
+        # Determine display name
+        final_display_name = display_name.strip() if display_name and display_name.strip() else f"User_{connection_id[:8]}"
+        
+        # Check if display_name is unique in the room (case-insensitive)
+        existing_names = redis_backend.get_display_names_in_room(room_id)
+        if final_display_name.lower() in existing_names:
+            logger.warning(f"WebSocket connection rejected: Display name '{final_display_name}' already taken in room {room_id}")
+            await websocket.close(code=1008, reason=f"Display name '{final_display_name}' is already taken. Please choose a different name.")
+            return
+        
         # Accept connection
         await websocket.accept()
         logger.info(f"WebSocket connection accepted for room: {room_id}")
-        
-        # Generate unique connection ID
-        connection_id = str(uuid.uuid4())
         
         # Add connection to room tracking
         if room_id not in room_connections:
@@ -189,7 +199,7 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
         user_data = {
             "connected_at": datetime.now().isoformat(),
             "room_id": room_id,
-            "display_name": display_name or f"User_{connection_id[:8]}"
+            "display_name": final_display_name
         }
         redis_backend.add_user_to_room(room_id, connection_id, user_data)
         logger.info(f"User {connection_id} ({user_data['display_name']}) joined room {room_id}")

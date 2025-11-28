@@ -116,6 +116,26 @@ class RedisBackend:
         logger.debug(f"Room {room_id} has {len(users)} users")
         return users
     
+    def get_display_names_in_room(self, room_id: str):
+        """Get all display names currently in use in a room."""
+        logger.debug(f"Getting display names in room {room_id}")
+        connection_ids = self.get_users_in_room(room_id)
+        display_names = set()
+        
+        for conn_id in connection_ids:
+            try:
+                conn_key = REDIS_CONN_KEY.format(connection_id=conn_id)
+                conn_data = self.redis_client.hgetall(conn_key)
+                if conn_data and "display_name" in conn_data:
+                    display_name = conn_data["display_name"]
+                    if display_name:
+                        display_names.add(display_name.lower())  # Case-insensitive comparison
+            except Exception as e:
+                logger.debug(f"Could not get display name for connection {conn_id}: {e}")
+        
+        logger.debug(f"Room {room_id} has display names: {display_names}")
+        return display_names
+    
     def get_room_channel_name(self, room_id: str) -> str:
         """Get the Redis pub/sub channel name for a room."""
         return REDIS_ROOM_CHANNEL.format(slug=room_id)
