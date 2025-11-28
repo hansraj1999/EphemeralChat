@@ -195,7 +195,14 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
         room_connections[room_id][connection_id] = websocket
         logger.debug(f"Added connection {connection_id} to room {room_id} (local connections: {len(room_connections[room_id])})")
         
-        # Add to Redis set with user metadata
+        # Start Redis pub/sub listener for this room if not already running (MUST be before adding user to Redis)
+        if room_id not in room_pubsub_tasks or room_pubsub_tasks[room_id].done():
+            room_pubsub_tasks[room_id] = asyncio.create_task(listen_to_redis_channel(room_id))
+            logger.debug(f"Started Redis pub/sub listener for room: {room_id}")
+            # Give the listener a moment to subscribe to Redis channel
+            await asyncio.sleep(0.1)
+        
+        # Add to Redis set with user metadata (AFTER listener is ready)
         user_data = {
             "connected_at": datetime.now().isoformat(),
             "room_id": room_id,
@@ -204,35 +211,50 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
         redis_backend.add_user_to_room(room_id, connection_id, user_data)
         logger.info(f"User {connection_id} ({user_data['display_name']}) joined room {room_id}")
         
-        # Broadcast user online presence to all instances
-        presence_message = {
-            "type": "presence",
-            "event": "user_online",
-            "connection_id": connection_id,
-            "display_name": user_data["display_name"],
-            "room_id": room_id,
-            "timestamp": datetime.now().isoformat(),
-            "online_count": len(redis_backend.get_users_in_room(room_id))
-        }
-        redis_backend.publish_message(room_id, presence_message)
-        logger.debug(f"Broadcasted user online presence for {connection_id}")
+        # Get current online users list (including the new user)
+        current_users = redis_backend.get_users_in_room(room_id)
+        online_count = len(current_users)
         
-        # Start Redis pub/sub listener for this room if not already running
-        if room_id not in room_pubsub_tasks or room_pubsub_tasks[room_id].done():
-            room_pubsub_tasks[room_id] = asyncio.create_task(listen_to_redis_channel(room_id))
-            logger.debug(f"Started Redis pub/sub listener for room: {room_id}")
+        # Get list of all online users with their details
+        online_users_list = []
+        for conn_id in current_users:
+            try:
+                conn_key = redis_backend.redis_client.hgetall(f"conn:{conn_id}")
+                if conn_key and "display_name" in conn_key:
+                    online_users_list.append({
+                        "connection_id": conn_id,
+                        "display_name": conn_key["display_name"],
+                        "connected_at": conn_key.get("connected_at", "")
+                    })
+            except Exception as e:
+                logger.debug(f"Could not get user details for {conn_id}: {e}")
         
         try:
-            # Send welcome message
+            # Send welcome message with initial online users list
             welcome_msg = {
                 "type": "system",
                 "message": "Connected to room",
                 "room_id": room_id,
                 "connection_id": connection_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "online_users": online_users_list,
+                "online_count": online_count
             }
             await websocket.send_text(json.dumps(welcome_msg))
-            logger.debug(f"Sent welcome message to connection {connection_id}")
+            logger.debug(f"Sent welcome message to connection {connection_id} with {online_count} online users")
+            
+            # Broadcast user online presence to all instances (including this one)
+            presence_message = {
+                "type": "presence",
+                "event": "user_online",
+                "connection_id": connection_id,
+                "display_name": user_data["display_name"],
+                "room_id": room_id,
+                "timestamp": datetime.now().isoformat(),
+                "online_count": online_count
+            }
+            redis_backend.publish_message(room_id, presence_message)
+            logger.debug(f"Broadcasted user online presence for {connection_id} with count {online_count}")
             
             # Listen for messages from WebSocket
             message_count = 0
