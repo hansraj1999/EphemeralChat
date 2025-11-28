@@ -23,16 +23,18 @@ async def create_room(room: CreateRoomRequest, request: Request):
     # { "password": "optional-cleartext-or-hash", "expiry_seconds": 600, // optional, default 600 (10m) "max_users": 20, "name": "optional-room-name" }
     # Response 201: { "room_id": "7hd92f", "ws_url": "wss://api.example.com/rooms/7hd92f/ws?token=abc", "expires_at": "2025-11-17T12:34:56Z" }
     logger.info(f"Room creation request from {request.client.host}, name: {room.name}, max_users: {room.max_users}, owner: {room.owner_name}")
+    
+    # Validate owner_name is provided (Pydantic validates required, but ensure it's not empty)
+    if not room.owner_name or not room.owner_name.strip():
+        logger.warning(f"Room creation failed: owner_name is required and cannot be empty")
+        raise HTTPException(status_code=400, detail="owner_name is required and cannot be empty")
+    
+    # Set defaults and generate room metadata
     expiry_seconds = room.expiry_seconds or 600
     max_users = room.max_users or 20
     name = room.name or generate_random_slug(20)
     room_id = uuid.uuid4().hex
     expires_at = (datetime.now() + timedelta(seconds=expiry_seconds)).isoformat()
-    
-    # Validate owner_name is provided
-    if not room.owner_name or room.owner_name.strip() == "":
-        logger.warning(f"Room creation failed: owner_name is required")
-        raise HTTPException(status_code=400, detail="owner_name is required")
     
     try:
         redis_backend.create_room(room_id, {
@@ -43,13 +45,14 @@ async def create_room(room: CreateRoomRequest, request: Request):
             "expires_at": expires_at,
             "password": room.password if room.password else None,
             "owner_ip": request.client.host,
-            "owner_name": room.owner_name.strip()  # Store trimmed owner name
+            "owner_name": room.owner_name.strip(),  # Store trimmed owner name
+            "preferences": {
+                "destroy_on_owner_offline": room.destroy_on_owner_offline or False
+            },
         }, ttl=expiry_seconds)
         
         # Construct WebSocket URL using request's base URL
         base_url = str(request.base_url).rstrip('/')
-        # Replace http/https with ws/wss
-        ws_scheme = "wss" if base_url.startswith("https") else "ws"
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_base}/rooms/{room_id}/ws"
         

@@ -8,6 +8,7 @@ class CreateRoomRequest(BaseModel):
     max_users: Optional[int] = 20
     name: Optional[str] = None
     owner_name: str  # Required: Username of the room creator
+    destroy_on_owner_offline: Optional[bool] = False
 
 class CreateRoomResponse(BaseModel):
     room_id: str

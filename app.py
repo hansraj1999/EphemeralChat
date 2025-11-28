@@ -332,7 +332,22 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
                         "timestamp": datetime.now().isoformat(),
                         "online_count": len(redis_backend.get_users_in_room(room_id))
                     }
+                    logger.debug(f"Publishing user offline presence for {connection_id} to Redis pub/sub")
+                    
                     redis_backend.publish_message(room_id, presence_message)
+                    # Check if room owner went offline and should destroy room
+                    room = redis_backend.get_room(room_id)
+                    if room and display_name == room.get("owner_name"):
+                        preferences = room.get("preferences", {})
+                        if isinstance(preferences, dict) and preferences.get("destroy_on_owner_offline", False):
+                            logger.info(f"Room owner {display_name} went offline shutting down room {room_id}")
+                            redis_backend.publish_message(room_id, {
+                                "type": "system",
+                                "message": "Room owner went offline shutting down room",
+                                "room_id": room_id,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            redis_backend.delete_room(room_id)
                     logger.debug(f"Broadcasted user offline presence for {connection_id}")
                 except Exception as e:
                     logger.debug(f"Could not broadcast offline presence: {e}")

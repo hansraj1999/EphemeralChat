@@ -13,6 +13,7 @@ A distributed, ephemeral chat application built with FastAPI, WebSockets, and Re
 - 👤 **Real-Time Presence**: Automatic online/offline status updates via WebSocket
 - 🔌 **WebSocket Support**: Real-time bidirectional communication
 - 🧹 **Auto Cleanup**: Automatic cleanup of expired rooms and disconnected users
+- 👑 **Owner-Based Room Management**: Rooms can be automatically destroyed when the owner disconnects
 
 ## Architecture
 
@@ -236,6 +237,8 @@ Content-Type: application/json
 }
 ```
 
+**Note:** The `owner_name` field is required. When the room owner disconnects, the room will be automatically destroyed by default (controlled by `preferences.destroy_on_owner_offline`).
+
 **Response:**
 ```json
 {
@@ -449,6 +452,18 @@ ws.onmessage = (event) => {
 }
 ```
 
+**Room Owner Offline Auto-Destruction:**
+When a room owner disconnects, if the room preference `destroy_on_owner_offline` is enabled (default: `true`), the room is automatically destroyed. All connected users receive a system message before the room is deleted:
+
+```json
+{
+  "type": "system",
+  "message": "Room owner went offline shutting down room",
+  "room_id": "abc123",
+  "timestamp": "2025-01-17T12:34:56.789Z"
+}
+```
+
 ## Usage Examples
 
 ### Python Client Example
@@ -645,6 +660,10 @@ All instances must connect to the same Redis server for pub/sub to work correctl
 - **Default Expiry**: 600 seconds (10 minutes)
 - **Default Max Users**: 20
 - **Password**: Optional, plain text (consider hashing for production)
+- **Owner Name**: Required when creating a room
+- **Auto-Destroy on Owner Offline**: Enabled by default (`preferences.destroy_on_owner_offline: true`)
+  - When the room owner disconnects, the room is automatically deleted
+  - All connected users receive a system notification before room deletion
 
 ## Project Structure
 
@@ -685,6 +704,12 @@ EphemeralChat/
 ### 4. TTL on Redis Keys
 - **Why**: Automatic cleanup of expired rooms and stale connections
 - **Benefit**: No manual cleanup required, reduces memory usage
+
+### 5. Owner-Based Room Management
+- **Why**: Provides room creators control over their rooms
+- **Implementation**: Room owner is tracked by `display_name` matching `owner_name`
+- **Behavior**: When owner disconnects, room is automatically destroyed (if preference enabled)
+- **Benefit**: Prevents abandoned rooms and ensures rooms are managed by their creators
 
 ## Error Handling
 
