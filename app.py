@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from routers.rooms import rooms_router
 from backend import redis_backend
 import uuid
@@ -16,6 +17,16 @@ setup_logging(log_level=log_level, log_file=log_file)
 logger = get_logger(__name__)
 
 app = FastAPI()
+
+# Configure CORS to allow all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
 app.include_router(rooms_router)
 
 logger.info("FastAPI application initialized")
