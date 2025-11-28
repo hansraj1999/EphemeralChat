@@ -33,3 +33,15 @@ class InviteRequest(BaseModel):
 
 class InviteResponse(BaseModel):
     invite_url: str
+
+class RoomDetailsResponse(BaseModel):
+    room_id: str
+    name: Optional[str]
+    created_at: str
+    expires_at: str
+    max_users: int
+    online_users_count: int
+    owner_name: Optional[str]
+    has_password: bool
+    is_expired: bool
+    is_full: bool

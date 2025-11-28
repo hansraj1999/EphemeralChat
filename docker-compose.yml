@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ephemeralchat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ephemeralchat-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ephemeralchat-app
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - DOMAIN=localhost
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/app/logs/app.log
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ephemeralchat-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  ephemeralchat-network:
+    driver: bridge
+

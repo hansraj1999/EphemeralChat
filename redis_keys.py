@@ -1,8 +1,8 @@
 REDIS_META_KEY = "room:meta:{slug}" # room id
-REDIS_USERS_KEY = "room:users:{ip}:{name}" # ip:name
-REDIS_ROOM_CHANNEL = "room:channel:{slug}" # room slug
+REDIS_USERS_KEY = "room:users:{slug}" # room id - set of connection IDs
+REDIS_ROOM_CHANNEL = "room:channel:{slug}" # room slug - pub/sub channel name
 REDIS_INVITE_KEY = "room:invite:{slug}" # room slug
-REDIS_CONN_KEY = "conn:{connection_id}" # connection id.
+REDIS_CONN_KEY = "conn:{connection_id}" # connection id - connection metadata
 
 # **Example `room:meta:{id}` hash fields**
 # - `id` = `{roomId}`
