@@ -22,12 +22,17 @@ def generate_random_slug(length: int = 20) -> str:
 async def create_room(room: CreateRoomRequest, request: Request):
     # { "password": "optional-cleartext-or-hash", "expiry_seconds": 600, // optional, default 600 (10m) "max_users": 20, "name": "optional-room-name" }
     # Response 201: { "room_id": "7hd92f", "ws_url": "wss://api.example.com/rooms/7hd92f/ws?token=abc", "expires_at": "2025-11-17T12:34:56Z" }
-    logger.info(f"Room creation request from {request.client.host}, name: {room.name}, max_users: {room.max_users}")
+    logger.info(f"Room creation request from {request.client.host}, name: {room.name}, max_users: {room.max_users}, owner: {room.owner_name}")
     expiry_seconds = room.expiry_seconds or 600
     max_users = room.max_users or 20
     name = room.name or generate_random_slug(20)
     room_id = uuid.uuid4().hex
     expires_at = (datetime.now() + timedelta(seconds=expiry_seconds)).isoformat()
+    
+    # Validate owner_name is provided
+    if not room.owner_name or room.owner_name.strip() == "":
+        logger.warning(f"Room creation failed: owner_name is required")
+        raise HTTPException(status_code=400, detail="owner_name is required")
     
     try:
         redis_backend.create_room(room_id, {
@@ -38,7 +43,7 @@ async def create_room(room: CreateRoomRequest, request: Request):
             "expires_at": expires_at,
             "password": room.password if room.password else None,
             "owner_ip": request.client.host,
-            "owner_name": room.owner_name
+            "owner_name": room.owner_name.strip()  # Store trimmed owner name
         }, ttl=expiry_seconds)
         
         # Construct WebSocket URL using request's base URL

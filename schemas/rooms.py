@@ -7,7 +7,7 @@ class CreateRoomRequest(BaseModel):
     expiry_seconds: Optional[int] = 600
     max_users: Optional[int] = 20
     name: Optional[str] = None
-    owner_name: Optional[str] = None
+    owner_name: str  # Required: Username of the room creator
 
 class CreateRoomResponse(BaseModel):
     room_id: str
