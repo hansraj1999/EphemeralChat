@@ -138,11 +138,12 @@ async def listen_to_redis_channel(room_id: str):
 
 
 @app.websocket("/rooms/{room_id}/ws")
-async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: str = None):
+async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: str = None, password: str = None):
     """WebSocket endpoint with Redis pub/sub for distributed messaging.
     
     Query parameters:
     - display_name: Optional display name for the user
+    - password: Required if room is password protected
     """
     connection_id = None
     logger.info(f"WebSocket connection attempt for room: {room_id}, display_name: {display_name}")
@@ -162,6 +163,15 @@ async def websocket_endpoint(room_id: str, websocket: WebSocket, display_name: s
             await websocket.close(code=1008, reason="Room expired")
             redis_backend.delete_room(room_id)
             return
+        
+        # Validate password if room is password protected
+        room_password = room.get("password")
+        # Check if password exists and is not None/empty/"None"
+        if room_password and room_password != "None" and room_password != "":
+            if not password or room_password != password:
+                logger.warning(f"WebSocket connection rejected: Invalid password for room {room_id}")
+                await websocket.close(code=1008, reason="Invalid password")
+                return
         
         # Check max users
         max_users = room.get("max_users", 20)
